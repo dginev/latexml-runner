@@ -5,7 +5,7 @@ use std::error::Error;
 use std::result::Result;
 use std::sync::Arc;
 use std::path::Path;
-use std::fs::create_dir_all;
+use std::fs::{read_dir, create_dir_all};
 
 use crossbeam::queue::ArrayQueue;
 use csv::{ReaderBuilder,WriterBuilder};
@@ -48,14 +48,42 @@ impl Harness {
     Ok(Harness {
       from_port,
       cpus,
-      // Let's both fit in RAM and also maximally utilize the CPUs.
+      // Let's both fit in RAM and also maximally utilize the CPUs
+      // without artificial round-robin bottlenecks (batch_size=cpus)
       batch_size: (100 * cpus).into(),
       servers
     })
   }
 
-  /// Multiple calls to `convert()` can be made to the same `Harness`,
-  /// reusing the latexmls servers it owns.
+  /// Converts a (flat) directory of CSV files,
+  /// each file of which is processed as per `convert_file`
+  pub fn convert_dir(
+    &mut self,
+    input_dir: &str,
+    output_dir: &str,
+    log_dir: &str,
+  ) -> Result<(), Box<dyn Error>> {
+    // Prepare files for I/O
+    let input_path = Path::new(input_dir);
+    if !input_path.is_dir() || !input_path.exists() {
+      return Err(format!("Harness::convert_dir should only ever be called on existing directories: {}", input_dir).into());
+    };
+    for read_result in read_dir(input_path)? {
+      if let Ok(dir_entry) = read_result {
+        let filename = dir_entry.file_name();
+        let entry = filename.to_string_lossy();
+        if entry.ends_with(".csv") {
+          self.convert_file(&format!("{}/{}",input_dir, entry), &format!("{}/result_{}",output_dir, entry), &format!("{}/{}.log",log_dir, entry))?;
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  /// Converts a CSV file containing one TeX input string per line
+  /// creating a CSV and log files with respective results and status codes
+  /// in the same line order as the input.
   pub fn convert_file(
     &mut self,
     input_file: &str,
@@ -71,8 +99,8 @@ impl Harness {
 
     // Prepare files for I/O
     let input_path = Path::new(input_file);
-    let input_dir = if input_path.is_dir() {
-      input_path
+    let input_dir = if input_path.is_dir() || !input_path.exists() {
+      return Err(format!("Harness::convert_file should only ever be called on existing CSV files: {}", input_file).into());
     } else {
       input_path.parent().unwrap()
     };
@@ -100,18 +128,26 @@ impl Harness {
     let mut out_writer = WriterBuilder::new().from_path(output_file)?;
     let mut log_writer = WriterBuilder::new().from_path(log_file)?;
 
-    // Process each line of the input file as a separate job
+    // Each line of the input file represents a separate conversion job.
+    // we stream it in line by line, allocating large enough batches in RAM
+    // to process in parallel
     let batched_record_iter = reader
       .records()
       .filter(|record| record.is_ok())
       .map(|record| record.unwrap())
       .chunks(self.batch_size);
 
+    // we can't chunk in the generic function, since mapping each data item to &str is specific to the reader
+    // in this case our CSV reader allows for `as_slice`, but if we were reading from e.g. json, yaml, etc
+    // the path to a string slice would be different.
+    //
+    // Similarly we can't map to &str before we collect the chunks into a vec,
+    // as Rust wants to have a solid grasp on the owned data before it allows us to borrow from it.
+
     for batch in batched_record_iter.into_iter() {
       let chunk_data : Vec<_> = batch.collect();
-      let chunk_str_data : Vec<_> = chunk_data.iter().map(|x| x.as_slice()).collect();
       let b_len = chunk_data.len();
-      let results = self.convert_iterator(chunk_str_data.into_iter());
+      let results = self.convert_iterator(chunk_data.iter().map(|x| x.as_slice()));
       // We must always ensure we match inputs with outputs, or large streams become corrupted
       let r_len = results.len();
       assert_eq!(r_len, b_len, "panic: we got {} results for {} inputs!",r_len, b_len);

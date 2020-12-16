@@ -148,5 +148,5 @@ fn main() -> Result<(), Box<dyn Error>> {
   );
 
   let mut harness = Harness::new(from_port, cpus, &cache_key, boot_latexmls_opts)?;
-  harness.convert(&input_file, &output_file, &log_file)
+harness.convert_file(&input_file, &output_file, &log_file)
 }

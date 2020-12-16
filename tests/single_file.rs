@@ -15,7 +15,7 @@ fn convert_file() {
   );
   assert!(harness_result.is_ok(), format!("{:?}", harness_result));
   let mut harness = harness_result.unwrap();
-  let result = harness.convert(dirname, "tests/scratch/test.csv", "tests/scratch/test.log");
+  let result = harness.convert_file(dirname, "tests/scratch/test.csv", "tests/scratch/test.log");
   assert!(result.is_ok(), format!("{:?}", result));
   eprintln!("  sqrts.csv test took {:?}ms",start_test.elapsed().as_millis());
 }

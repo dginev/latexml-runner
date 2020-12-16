@@ -17,6 +17,7 @@ use which::which;
 pub struct Harness {
   pub cpus: u16,
   pub from_port: u16,
+  pub batch_size: usize,
   servers: Arc<ArrayQueue<Server>>,
 }
 
@@ -47,13 +48,15 @@ impl Harness {
     Ok(Harness {
       from_port,
       cpus,
+      // Let's both fit in RAM and also maximally utilize the CPUs.
+      batch_size: (100 * cpus).into(),
       servers
     })
   }
 
   /// Multiple calls to `convert()` can be made to the same `Harness`,
   /// reusing the latexmls servers it owns.
-  pub fn convert(
+  pub fn convert_file(
     &mut self,
     input_file: &str,
     output_file: &str,
@@ -96,52 +99,25 @@ impl Harness {
     let mut reader = ReaderBuilder::new().has_headers(false).from_path(input_file)?;
     let mut out_writer = WriterBuilder::new().from_path(output_file)?;
     let mut log_writer = WriterBuilder::new().from_path(log_file)?;
-    // Let's both fit in RAM and also maximally utilize the CPUs.
-    let batch_size = 100 * self.cpus;
 
     // Process each line of the input file as a separate job
     let batched_record_iter = reader
       .records()
       .filter(|record| record.is_ok())
       .map(|record| record.unwrap())
-      .chunks(batch_size.into());
+      .chunks(self.batch_size);
 
     for batch in batched_record_iter.into_iter() {
       let chunk_data : Vec<_> = batch.collect();
+      let chunk_str_data : Vec<_> = chunk_data.iter().map(|x| x.as_slice()).collect();
       let b_len = chunk_data.len();
-      let mut results : Vec<_> =
-      chunk_data.into_iter().enumerate().par_bridge().map(|(index, record)| {
-        let mut server = self.servers.pop().unwrap();
-        let mut result = server.convert(record.as_slice());
-        if result.is_err() { // retry 1
-          result = server.convert(record.as_slice());
-        }
-        if result.is_err() { // retry 2
-          result = server.convert(record.as_slice());
-        }
-        let response = match result {
-          Ok(r) => r,
-          Err(_) => {
-            LatexmlResponse::default()
-          }
-        };
-        self
-        .servers
-        .push(server)
-        .unwrap();
-        (index,response)
-      }).collect();
-      results.sort_by_key(|x| x.0);
-      let r_len = results.len();
-
+      let results = self.convert_iterator(chunk_str_data.into_iter());
       // We must always ensure we match inputs with outputs, or large streams become corrupted
+      let r_len = results.len();
       assert_eq!(r_len, b_len, "panic: we got {} results for {} inputs!",r_len, b_len);
 
       // Flush this batch to output files
-      let mut assert_index = 0;
-      for (index,response) in results.into_iter() {
-        assert_eq!(index, assert_index, "responses were out of order, expected {} got {}", assert_index, index);
-        assert_index+=1;
+      for response in results.into_iter() {
         out_writer.write_record(&[response.result])?;
         log_writer.write_record(&[response.status_code.to_string()])?;
       }
@@ -150,6 +126,41 @@ impl Harness {
     }
     Ok(())
   }
+
+  /// Convert all jobs *from* a blocking serial iterator,
+  /// bridging to parallel latexmls servers via rayon.
+  /// Output is returned in the same order as the input entries.
+  /// Note that you may need to batch your data before using this method,
+  /// as all output values are held in memory at the moment
+  fn convert_iterator<'a, I>(&mut self, vals: I) -> Vec<LatexmlResponse>
+  where
+      I: Iterator<Item = &'a str>+Send,
+  {
+    let mut results : Vec<_> = vals.enumerate().par_bridge().map(|(index, record)| {
+      let mut server = self.servers.pop().unwrap();
+      let mut result = server.convert(record);
+      if result.is_err() { // retry 1
+        result = server.convert(record);
+      }
+      if result.is_err() { // retry 2
+        result = server.convert(record);
+      }
+      let response = match result {
+        Ok(r) => r,
+        Err(_) => {
+          LatexmlResponse::default()
+        }
+      };
+      self
+      .servers
+      .push(server)
+      .unwrap();
+      (index,response)
+    }).collect();
+    results.sort_by_key(|x| x.0);
+    results.into_iter().map(|x| x.1).collect()
+  }
+
 
   pub fn convert_one(&mut self, job: &str) -> Result<String, Box<dyn Error>> {
     // select an available server

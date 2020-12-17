@@ -88,7 +88,7 @@ impl Server {
        {
         let _child = Command::new(&self.latexmls_exec)
         .arg("--port").arg(&self.port.to_string())
-        .arg("--autoflush").arg("10000")
+        .arg("--autoflush").arg("0")
         .arg("--expire").arg("5").spawn()?;
 
         let a_second = time::Duration::from_millis(1000);
@@ -137,10 +137,7 @@ Content-Length: {}
 {}", addr, addr, body.len(), body);
     stream.write(request.as_bytes())?;
     let mut response_u8 = Vec::new();
-    match stream.read_to_end(&mut response_u8) {
-        Ok(_) => {},
-        Err(e) => panic!("encountered IO error on tcp read_to_end: {}", e),
-    };
+    stream.read_to_end(&mut response_u8)?;
     if response_u8.is_empty() {
       return Err("response was empty.".into());
     }

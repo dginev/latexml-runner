@@ -143,10 +143,12 @@ impl Harness {
     //
     // Similarly we can't map to &str before we collect the chunks into a vec,
     // as Rust wants to have a solid grasp on the owned data before it allows us to borrow from it.
-
+    let mut progress_count = 1;
     for batch in batched_record_iter.into_iter() {
       let chunk_data : Vec<_> = batch.collect();
+      eprintln!("-- converting job #{}", progress_count);
       let b_len = chunk_data.len();
+      progress_count += b_len;
       let results = self.convert_iterator(chunk_data.iter().map(|x| x.as_slice()));
       // We must always ensure we match inputs with outputs, or large streams become corrupted
       let r_len = results.len();
@@ -219,7 +221,7 @@ impl Drop for Harness {
       drop(server);
     }
     let _child = Command::new("killall")
-      .arg("-9").arg("latexmls")
+      .arg("latexmls")
       .spawn().unwrap().wait();
   }
 }

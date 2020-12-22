@@ -1,4 +1,4 @@
-# latexml-rust
+# latexml-runner
 Rust runner for high-performance conversions with latexmls.
 
 This executable is useful over the native Perl executables of latexml if:

@@ -97,7 +97,7 @@ impl Server {
         self.init_call()?;
       }
     }
-    return Ok(())
+    Ok(())
   }
 
   fn init_call(&mut self) -> Result<(),Box<dyn Error>> {
@@ -135,7 +135,7 @@ Content-Type: application/x-www-form-urlencoded
 Content-Length: {}
 
 {}", addr, addr, body.len(), body);
-    stream.write(request.as_bytes())?;
+    stream.write_all(request.as_bytes())?;
     let mut response_u8 = Vec::new();
     stream.read_to_end(&mut response_u8)?;
     if response_u8.is_empty() {

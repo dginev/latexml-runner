@@ -4,7 +4,7 @@ use rand::prelude::*;
 
 fn runner_helper(input_file:&str, output_file:&str, log_file:&str) {
   let start_test = Instant::now();
-  let from_port : u16 = thread_rng().gen_range(11000, 20000);
+  let from_port : u16 = thread_rng().gen_range(11000, 16000);
   let harness_result = Harness::new(
     from_port, rayon::current_num_threads() as u16, "single_file_test",
     [("whatsin","math"),("whatsout","math"),

@@ -5,7 +5,7 @@ use rand::prelude::*;
 #[test]
 fn convert_file() {
   let start_test = Instant::now();
-  let from_port : u16 = thread_rng().gen_range(11000, 20000);
+  let from_port : u16 = thread_rng().gen_range(11000, 13000);
   let harness_result = Harness::new(
     from_port, rayon::current_num_threads() as u16, "single_directory_test",
     [("whatsin","math"),("whatsout","math"),

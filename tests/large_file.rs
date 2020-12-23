@@ -23,6 +23,7 @@ fn runner_helper(input_file:&str, output_file:&str, log_file:&str) {
 }
 
 #[test]
+#[ignore]
 fn convert_mixed_severity() {
   runner_helper("mixed_16k.csv", "mixed_16k_result.csv", "mixed_16k.log");
 }

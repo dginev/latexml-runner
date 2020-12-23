@@ -1,0 +1,24 @@
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  test:
+    name: latexml runner test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install LaTeXML dependencies
+        uses: ryankurte/action-apt@v0.2.0
+        with:
+          packages: "cpanminus libdb-dev libxml2-dev libxslt1-dev"
+      - name: Install latexmls
+        run: "cpanm --sudo https://github.com/dginev/LaTeXML-Plugin-latexmls/tarball/master"
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test

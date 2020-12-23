@@ -55,7 +55,7 @@ impl Server {
     };
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     {
-      TcpListener::bind(addr).expect("Failed to bind on latexmls port, harness can't initialize!");
+      TcpListener::bind(addr).expect(&format!("Failed to bind on latexmls port {}, harness can't initialize!", port));
     }
 
     server.ensure_server()?;

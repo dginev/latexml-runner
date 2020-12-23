@@ -42,7 +42,7 @@ impl Harness {
           port,
           cache_key.to_string(),
           boot_options.clone(),
-        ).expect("failed to init first latexmls servers, check your installation."))
+        ).expect(&format!("failed to init first latexmls servers from port {}, check your installation.", port)))
         .expect("failed to initialize server ArrayQueue");
     });
     Ok(Harness {

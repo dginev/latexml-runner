@@ -3,8 +3,12 @@ name = "latexml-runner"
 version = "0.1.0"
 authors = ["Deyan Ginev <deyan.ginev@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Rust runner for high-performance TeX to HTML conversions with latexml"
+repository = "https://github.com/dginev/latexml-runner"
+readme = "README.md"
+license = "MIT"
+keywords = ["latexml", "latex","html5", "mathml", "conversion"]
+exclude = ["tests/scratch/*"]
 
 [lib]
 name = "latexml_runner"

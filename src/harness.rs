@@ -215,13 +215,13 @@ impl Harness {
   }
 }
 
-impl Drop for Harness {
-  fn drop(&mut self) {
-    while let Some(server) = self.servers.pop() {
-      drop(server);
-    }
-    let _child = Command::new("killall")
-      .arg("latexmls")
-      .spawn().unwrap().wait();
-  }
-}
+// impl Drop for Harness {
+//   fn drop(&mut self) {
+//     while let Some(server) = self.servers.pop() {
+//       drop(server);
+//     }
+//     let _child = Command::new("killall")
+//       .arg("latexmls")
+//       .spawn().unwrap().wait();
+//   }
+// }

@@ -89,7 +89,7 @@ impl Server {
         let _child = Command::new(&self.latexmls_exec)
         .arg("--port").arg(&self.port.to_string())
         .arg("--autoflush").arg("0")
-        .arg("--expire").arg("5").spawn()?;
+        .arg("--expire").arg("4").spawn()?;
 
         let a_second = time::Duration::from_millis(1000);
         thread::sleep(a_second);

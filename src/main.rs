@@ -3,11 +3,11 @@ extern crate clap;
 extern crate csv;
 extern crate which;
 
-use std::result::Result;
 use std::error::Error;
+use std::result::Result;
 
-use std::process;
 use latexml_runner::Harness;
+use std::process;
 
 fn main() -> Result<(), Box<dyn Error>> {
   let mut matches = clap_app!(latexml_runner =>
@@ -138,9 +138,9 @@ fn main() -> Result<(), Box<dyn Error>> {
   matches.args.remove("LOG");
   let mut boot_latexmls_opts = Vec::new();
   for key in matches.args.keys() {
-     for val in matches.values_of(key).unwrap() {
-          boot_latexmls_opts.push((key.to_string(),val.to_string()));
-     }
+    for val in matches.values_of(key).unwrap() {
+      boot_latexmls_opts.push((key.to_string(), val.to_string()));
+    }
   }
   println!(
     "Value at cache_key {}, port {}, cpus {}, i/o at {}/{} for config: {:?}",
@@ -148,5 +148,5 @@ fn main() -> Result<(), Box<dyn Error>> {
   );
 
   let mut harness = Harness::new(from_port, cpus, &cache_key, boot_latexmls_opts)?;
-harness.convert_file(&input_file, &output_file, &log_file)
+  harness.convert_file(&input_file, &output_file, &log_file)
 }

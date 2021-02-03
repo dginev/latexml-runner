@@ -1,13 +1,15 @@
 [package]
 name = "latexml-runner"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Deyan Ginev <deyan.ginev@gmail.com>"]
 edition = "2018"
 description = "Rust runner for high-performance TeX to HTML conversions with latexml"
+homepage = "https://github.com/dginev/latexml-runner"
 repository = "https://github.com/dginev/latexml-runner"
 readme = "README.md"
 license = "MIT"
-keywords = ["latexml", "latex","html5", "mathml", "conversion"]
+keywords = ["latex", "conversion", "cli","html5", "mathml"]
+categories = ["command-line-utilities"]
 exclude = ["tests/scratch/*"]
 
 [lib]

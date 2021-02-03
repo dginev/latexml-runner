@@ -2,14 +2,16 @@ use crate::server::{LatexmlResponse, Server};
 
 // use std::process::{Command};
 use std::error::Error;
+use std::io::{BufRead, BufReader};
 use std::fs::{create_dir_all, read_dir};
+use std::fs::File;
 use std::path::Path;
 use std::result::Result;
 use std::sync::Arc;
 use std::process;
 
 use crossbeam::queue::ArrayQueue;
-use csv::{ReaderBuilder, WriterBuilder};
+use csv::{ReaderBuilder, WriterBuilder, Writer};
 use itertools::Itertools;
 use rayon::prelude::*;
 use which::which;
@@ -102,23 +104,14 @@ impl Harness {
     Ok(())
   }
 
-  /// Converts a CSV file containing one TeX input string per line
-  /// creating a CSV and log files with respective results and status codes
-  /// in the same line order as the input.
-  pub fn convert_file(
-    &mut self,
-    input_file: &str,
-    output_file: &str,
-    log_file: &str,
-  ) -> Result<(), Box<dyn Error>> {
+  /// common setup steps for both txt and csv conversions
+  pub fn setup_conversion_io(&self, input_file: &str, output_file: &str, log_file: &str) -> Result<(Writer<File>, Writer<File>), Box<dyn Error>> {
     if self.cpus as usize != rayon::current_num_threads() {
       // if we requested different number of CPUs, change that in rayon
       rayon::ThreadPoolBuilder::new()
         .num_threads(self.cpus.into())
         .build_global()?;
     }
-
-    // Prepare files for I/O
     let input_path = Path::new(input_file);
     let input_dir = if input_path.is_dir() || !input_path.exists() {
       return Err(
@@ -152,12 +145,85 @@ impl Harness {
     if !log_dir.exists() {
       create_dir_all(log_dir)?;
     }
+    let out_writer = WriterBuilder::new().from_path(output_file)?;
+    let log_writer = WriterBuilder::new().from_path(log_file)?;
+    Ok((out_writer, log_writer))
+  }
+
+  /// Converts a file, dispatching to CSV or TXT readers as requested
+  pub fn convert_file(&mut self, input_file: &str, output_file: &str, log_file: &str) -> Result<(), Box<dyn Error>> {
+    match Path::new(input_file).extension() {
+      Some(ext) => if ext.to_str() == Some("txt") {
+        self.convert_txt_file(input_file, output_file, log_file)
+      } else {
+        self.convert_csv_file(input_file, output_file, log_file)
+      },
+      None => self.convert_csv_file(input_file, output_file, log_file)
+    }
+  }
+
+  /// Converts a .txt file containing one TeX input string per line.
+  /// NO multi-line formulas are supported.
+  /// Creates a CSV and log files with respective results and status codes
+  /// in the same line order as the input.
+  pub fn convert_txt_file(&mut self,
+    input_file: &str,
+    output_file: &str,
+    log_file: &str,
+  ) -> Result<(), Box<dyn Error>> {
+    let (mut out_writer, mut log_writer) = self.setup_conversion_io(input_file, output_file, log_file)?;
+
+    let reader = BufReader::with_capacity(
+      self.batch_size,
+      File::open(input_file)?);
+
+    // Each line of the input file represents a separate conversion job.
+    // we stream it in line by line, allocating large enough batches in RAM
+    // to process in parallel
+    let batched_record_iter = reader.lines().into_iter()
+      .map(|result| result.unwrap_or_else(|_| String::from("IOERROR")))
+      .chunks(self.batch_size);
+    let mut progress_count = 1;
+    for batch in batched_record_iter.into_iter() {
+      let chunk_data: Vec<_> = batch.collect();
+      let b_len = chunk_data.len();
+      eprintln!("-- converting batch, starting at job #{}", progress_count);
+      progress_count += b_len;
+      let results = self.convert_iterator(chunk_data.iter().map(|line| line.as_str()));
+      // We must always ensure we match inputs with outputs, or large streams become corrupted
+      let r_len = results.len();
+      assert_eq!(
+        r_len, b_len,
+        "panic: we got {} results for {} inputs!",
+        r_len, b_len
+      );
+
+      // Flush this batch to output files
+      for response in results.into_iter() {
+        out_writer.write_record(&[response.result])?;
+        log_writer.write_record(&[response.status_code.to_string()])?;
+      }
+      out_writer.flush()?;
+      log_writer.flush()?;
+    }
+    Ok(())
+  }
+
+  /// Converts a CSV file containing one TeX input string per line,
+  /// as well as multi-line variants "escaped" as prescrobed by CSV.
+  /// Creates a CSV and log files with respective results and status codes
+  /// in the same line order as the input.
+  pub fn convert_csv_file(
+    &mut self,
+    input_file: &str,
+    output_file: &str,
+    log_file: &str,
+  ) -> Result<(), Box<dyn Error>> {
+    let (mut out_writer, mut log_writer) = self.setup_conversion_io(input_file, output_file, log_file)?;
 
     let mut reader = ReaderBuilder::new()
       .has_headers(false)
       .from_path(input_file)?;
-    let mut out_writer = WriterBuilder::new().from_path(output_file)?;
-    let mut log_writer = WriterBuilder::new().from_path(log_file)?;
 
     // Each line of the input file represents a separate conversion job.
     // we stream it in line by line, allocating large enough batches in RAM

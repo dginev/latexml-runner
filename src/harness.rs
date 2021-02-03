@@ -30,6 +30,7 @@ impl Harness {
     from_port: u16,
     cpus: u16,
     cache_key: &str,
+    autoflush: usize,
     boot_options: Vec<(String, String)>,
   ) -> Result<Self, Box<dyn Error>> {
     let latexmls_which = which("latexmls").expect("latexmls needs to be installed and visible");
@@ -44,6 +45,7 @@ impl Harness {
             Server::boot_at(
               latexmls_exec.to_string(),
               port,
+              autoflush,
               cache_key.to_string(),
               boot_options.clone(),
             )
@@ -175,7 +177,7 @@ impl Harness {
     let mut progress_count = 1;
     for batch in batched_record_iter.into_iter() {
       let chunk_data: Vec<_> = batch.collect();
-      eprintln!("-- converting job #{}", progress_count);
+      eprintln!("-- converting batch; starting at job #{}", progress_count);
       let b_len = chunk_data.len();
       progress_count += b_len;
       let results = self.convert_iterator(chunk_data.iter().map(|x| x.as_slice()));

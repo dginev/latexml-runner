@@ -10,6 +10,7 @@ fn convert_file() {
     from_port,
     rayon::current_num_threads() as u16,
     "single_directory_test",
+    0,
     [
       ("whatsin", "math"),
       ("whatsout", "math"),

@@ -8,6 +8,7 @@ use std::result::Result;
 
 use latexml_runner::Harness;
 use std::process;
+use std::collections::HashSet;
 
 fn main() -> Result<(), Box<dyn Error>> {
   let mut matches = clap_app!(latexml_runner =>
@@ -19,18 +20,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         (@arg INPUT: -i --input_file +takes_value +required "An input CSV file containing one formula per line. OR a directory of such CSV files.")
         (@arg OUTPUT: -o --output_file +takes_value +required "The output CSV file, containing one output formula per line, preserving input order. OR a directory for such CSV files.")
         (@arg LOG: -l --log_file +takes_value "An optional log file, containing one latexml conversion status per line, preserving input order")
-        (@arg pmml: --pmml "enable presentation MathML output")
+        (@arg pmml: --pmml "converts math to Presentation MathML (default for xhtml & html5 formats)")
         (@arg nopmml: --nopmml "disable presentation MathML output")
         (@arg cmml: --cmml "enable content MathML output")
         (@arg nocmml: --nocmml "disable content MathML output")
-        (@arg preload: --preload +takes_value "requests loading of an optional module can be repeated")
+        (@arg preload: --preload +takes_value ... "requests loading of an optional module can be repeated")
         (@arg preamble: --preamble +takes_value "loads a tex file containing document frontmatter. MUST include \\begin{document} or equivalent")
         (@arg postamble: --postamble +takes_value "loads a tex file containing document backmatter. MUST include \\end{document} or equivalent")
         (@arg includestyles: --includestyles     "allows latexml to load raw *.sty file; by default it avoids this.")
         (@arg base: --base +takes_value          "sets the current working directory")
         (@arg path: --path +takes_value ...      "adds dir to the paths searched for files, modules, etc;")
         (@arg log: --log +takes_value            "specifies log file (default: STDERR)")
-        (@arg autoflush: --autoflush +takes_value  "Automatically restart the daemon after \"count\" inputs. Good practice for vast batch jobs. (default: 100)")
+        (@arg autoflush: --autoflush +takes_value  "Automatically restart the daemon after \"count\" inputs. Good practice for vast batch jobs. (default: 10000)")
         (@arg timeout: --timeout +takes_value    "Timecap for conversions (default 600)")
         (@arg expire: --expire +takes_value      "Timecap for server inactivity (default 600)")
         (@arg address: --address +takes_value    "Specify server address (default: localhost)")
@@ -43,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         (@arg xml: --xml                         "requests xml output (default).")
         (@arg tex: --tex                         "requests TeX output after expansion.")
         (@arg format: --format +takes_value      "requests 'name' as the output format. Supported: tex,box,xml,html4,html5,xhtml html implies html5")
-        (@arg noparse: --noparse                 "suppresses parsing math (default: off)")
+        (@arg noparse: --noparse conflicts_with[pmml cmml openmath]                 "suppresses parsing math (default: off)")
         (@arg parse: --parse +takes_value        "enables parsing math (default: on) and selects parser framework \"name\". Supported: RecDescent, no")
         (@arg profile: --profile +takes_value    "specify profile as defined in LaTeXML::Common::Config Supported: standard|math|fragment|... (default: standard)")
         (@arg mode: --mode +takes_value          "Alias for profile")
@@ -90,18 +91,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         (@arg mathimages: --mathimages           "converts math to images (default for html4 format)")
         (@arg nomathimages: --nomathimages       "disables the above")
         (@arg mathimagemagnification: --mathimagemagnification +takes_value "specifies magnification factor")
-        (@arg presentationmathml: --presentationmathml    "converts math to Presentation MathML (default for xhtml & html5 formats)")
-        (@arg nopresentationmathml: --nopresentationmathml  "disables the above")
         (@arg linelength: --linelength +takes_value         "formats presentation mathml to a linelength max of n characters")
-        (@arg contentmathml: --contentmathml     "converts math to Content MathML")
-        (@arg nocontentmathml: --nocontentmathml "disables the above (default)")
         (@arg openmath: --openmath               "converts math to OpenMath")
         (@arg noopenmath: --noopenmath           "disables the above (default)")
-        (@arg om: --om                           "alias for --openmath")
         (@arg mathtex: --mathtex                 "adds TeX annotation to parallel markup")
         (@arg nomathtex: --nomathtex             "disables the above (default)")
-        (@arg parallelmath: --parallelmath       "use parallel math annotations (default)")
-        (@arg noparallelmath: --noparallelmath   "disable parallel math annotations")
         (@arg plane1: --plane1                   "use plane-1 unicode for symbols (default, if needed)")
         (@arg noplane1: --noplane1               "do not use plane-1 unicode")
         (@arg graphicimages: --graphicimages     "converts graphics to images (default)")
@@ -131,22 +125,40 @@ fn main() -> Result<(), Box<dyn Error>> {
   let input_file = matches.value_of("INPUT").unwrap().to_string();
   let output_file = matches.value_of("OUTPUT").unwrap().to_string();
   let log_file = matches.value_of("LOG").unwrap_or("runner.log").to_string();
+  let autoflush = matches.value_of("autoflush").unwrap_or("0")
+    .parse::<usize>().unwrap_or(0);
   matches.args.remove("PORT");
   matches.args.remove("CPUS");
   matches.args.remove("INPUT");
   matches.args.remove("OUTPUT");
   matches.args.remove("LOG");
+  matches.args.remove("autoflush");
   let mut boot_latexmls_opts = Vec::new();
+  // clap option parsing mangles order, so we'll just impose the standard one for requested math
+  // pmml is primary, followed by cmml, mathtex,
+  let mut deferred_math = HashSet::new();
   for key in matches.args.keys() {
+    let mut name_only = true;
     for val in matches.values_of(key).unwrap() {
+      name_only = false;
       boot_latexmls_opts.push((key.to_string(), val.to_string()));
     }
+    if name_only {
+      match *key {
+        "pmml" | "cmml" | "openmath" | "mathtex" |
+        "nopmml" | "nocmml" | "noopenmath" | "nomathtex" =>
+        {deferred_math.insert(*key);},
+        _ =>  boot_latexmls_opts.push((key.to_string(), String::new()))
+      }
+    }
   }
-  println!(
-    "Value at cache_key {}, port {}, cpus {}, i/o at {}/{} for config: {:?}",
-    cache_key, from_port, cpus, input_file, output_file, matches
-  );
+  for math_key in &["pmml","cmml","openmath","mathtex",
+      "nopmml","nocmml","noopenmath","nomathtex"] {
+    if deferred_math.contains(math_key) {
+      boot_latexmls_opts.push((math_key.to_string(), String::new()))
+    }
+  }
 
-  let mut harness = Harness::new(from_port, cpus, &cache_key, boot_latexmls_opts)?;
+  let mut harness = Harness::new(from_port, cpus, &cache_key, autoflush, boot_latexmls_opts)?;
   harness.convert_file(&input_file, &output_file, &log_file)
 }

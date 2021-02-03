@@ -38,6 +38,9 @@ impl LatexmlResponse {
 #[derive(Debug)]
 pub(crate) struct Server {
   port: u16,
+  backup_port: u16,
+  autoflush: usize,
+  call_count: usize,
   cache_key: String,
   latexmls_exec: String,
   boot_options: Vec<(String, String)>,
@@ -49,14 +52,19 @@ impl Server {
   pub fn boot_at(
     latexmls_exec: String,
     port: u16,
+    autoflush: usize,
     cache_key: String,
     boot_options: Vec<(String, String)>,
   ) -> Result<Self, Box<dyn Error>> {
     let mut server = Server {
       latexmls_exec,
       port,
+      // should be a while before we have more than 200 latexmls processes on the same machine
+      backup_port: port+200,
       cache_key,
       boot_options,
+      autoflush,
+      call_count: 0,
       connection: None,
       child_proc: None,
     };
@@ -94,6 +102,15 @@ impl Server {
   /// The only resourceful choice is to see if the port is open & available for bind
   /// in which case we should be booting a server at it.
   pub fn ensure_server(&mut self) -> Result<(), Box<dyn Error>> {
+    if self.autoflush>0 && self.call_count > self.autoflush {
+      // if autoflush was breached, rotate ports.
+      let new_backup = self.port;
+      self.port = self.backup_port;
+      self.backup_port = new_backup;
+      self.connection = None;
+      self.child_proc = None;
+      self.call_count = 0;
+    }
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
     let port_is_open = { TcpListener::bind(addr).is_ok() };
     if port_is_open {
@@ -103,6 +120,8 @@ impl Server {
           .arg(&self.port.to_string())
           .arg("--autoflush")
           .arg("0")
+          .arg("--timeout")
+          .arg("60")
           .arg("--expire")
           .arg("4")
           .spawn()?;
@@ -131,6 +150,7 @@ impl Server {
   }
 
   fn call_latexmls(&mut self, body: &str) -> Result<LatexmlResponse, Box<dyn Error>> {
+    self.call_count+=1;
     let addr = format!("127.0.0.1:{}", self.port);
     let mut stream = match self.connection.take() {
       Some(stream) => stream,

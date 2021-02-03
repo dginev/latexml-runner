@@ -8,7 +8,6 @@ fn runner_helper(input_file: &str, output_file: &str, log_file: &str) {
   let harness_result = Harness::new(
     from_port,
     rayon::current_num_threads() as u16,
-    "single_file_test",
     0,
     [
       ("whatsin", "math"),

@@ -9,7 +9,6 @@ fn convert_file() {
   let harness_result = Harness::new(
     from_port,
     rayon::current_num_threads() as u16,
-    "single_directory_test",
     0,
     [
       ("whatsin", "math"),

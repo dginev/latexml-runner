@@ -51,7 +51,7 @@ impl Harness {
               format!("latexml_runner:{}", process::id()),
               boot_options.clone(),
             )
-            .expect(&format!(
+            .unwrap_or_else(|_| panic!(
               "failed to init first latexmls servers from port {}, check your installation.",
               port
             )),

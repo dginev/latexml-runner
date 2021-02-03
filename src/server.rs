@@ -121,7 +121,7 @@ impl Server {
           .arg("--autoflush")
           .arg("0")
           .arg("--timeout")
-          .arg("60")
+          .arg("120")
           .arg("--expire")
           .arg("4")
           .spawn()?;
@@ -142,7 +142,10 @@ impl Server {
       + &self
         .boot_options
         .iter()
-        .map(|opt| format!("{}={}", encode(&opt.0), encode(&opt.1)))
+        .map(|opt| if opt.1.is_empty() {
+          encode(&opt.0)
+        } else {
+          format!("{}={}", encode(&opt.0), encode(&opt.1)) })
         .collect::<Vec<_>>()
         .join("&");
     self.call_latexmls(&body)?;

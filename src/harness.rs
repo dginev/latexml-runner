@@ -6,6 +6,7 @@ use std::fs::{create_dir_all, read_dir};
 use std::path::Path;
 use std::result::Result;
 use std::sync::Arc;
+use std::process;
 
 use crossbeam::queue::ArrayQueue;
 use csv::{ReaderBuilder, WriterBuilder};
@@ -29,7 +30,6 @@ impl Harness {
   pub fn new(
     from_port: u16,
     cpus: u16,
-    cache_key: &str,
     autoflush: usize,
     boot_options: Vec<(String, String)>,
   ) -> Result<Self, Box<dyn Error>> {
@@ -46,7 +46,7 @@ impl Harness {
               latexmls_exec.to_string(),
               port,
               autoflush,
-              cache_key.to_string(),
+              format!("latexml_runner:{}", process::id()),
               boot_options.clone(),
             )
             .expect(&format!(
@@ -177,8 +177,8 @@ impl Harness {
     let mut progress_count = 1;
     for batch in batched_record_iter.into_iter() {
       let chunk_data: Vec<_> = batch.collect();
-      eprintln!("-- converting batch; starting at job #{}", progress_count);
       let b_len = chunk_data.len();
+      eprintln!("-- converting batch, starting at job #{}", progress_count);
       progress_count += b_len;
       let results = self.convert_iterator(chunk_data.iter().map(|x| x.as_slice()));
       // We must always ensure we match inputs with outputs, or large streams become corrupted

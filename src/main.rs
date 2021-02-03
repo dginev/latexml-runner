@@ -7,7 +7,6 @@ use std::error::Error;
 use std::result::Result;
 
 use latexml_runner::Harness;
-use std::process;
 use std::collections::HashSet;
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -48,7 +47,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         (@arg parse: --parse +takes_value        "enables parsing math (default: on) and selects parser framework \"name\". Supported: RecDescent, no")
         (@arg profile: --profile +takes_value    "specify profile as defined in LaTeXML::Common::Config Supported: standard|math|fragment|... (default: standard)")
         (@arg mode: --mode +takes_value          "Alias for profile")
-        (@arg cache_key: --cache_key +takes_value "Provides a name for the current option set, to enable daemonized conversions without needing re-initializing")
         (@arg whatsin: --whatsin +takes_value    "Defines the provided input chunk, choose from document (default), fragment and formula")
         (@arg whatsout: --whatsout +takes_value  "Defines the expected output chunk, choose from document (default), fragment and formula")
         (@arg post: --post                       "requests a followup post-processing")
@@ -110,8 +108,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         (@arg debug: --debug +takes_value        "enables debugging output for the named package")
      ).get_matches();
 
-  // Gets a value for config if supplied by user, or defaults to "default.conf"
-  let cache_key = format!("latexml_runner:{}", process::id());
   let from_port: u16 = if let Some(port_str) = matches.value_of("PORT") {
     port_str.parse().unwrap()
   } else {
@@ -159,6 +155,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
   }
 
-  let mut harness = Harness::new(from_port, cpus, &cache_key, autoflush, boot_latexmls_opts)?;
+  let mut harness = Harness::new(from_port, cpus, autoflush, boot_latexmls_opts)?;
   harness.convert_file(&input_file, &output_file, &log_file)
 }

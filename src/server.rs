@@ -36,7 +36,7 @@ impl LatexmlResponse {
 }
 
 #[derive(Debug)]
-pub(crate) struct Server {
+pub struct Server {
   port: u16,
   backup_port: u16,
   autoflush: usize,
@@ -87,7 +87,7 @@ impl Server {
       "cache_key={}&source=literal:{}",
       self.cache_key,
       encode(job)
-    )) {
+    ), true) {
       Ok(r) => Ok(r),
       Err(e) => {
         // close connection on error.
@@ -148,11 +148,11 @@ impl Server {
           format!("{}={}", encode(&opt.0), encode(&opt.1)) })
         .collect::<Vec<_>>()
         .join("&");
-    self.call_latexmls(&body)?;
+    self.call_latexmls(&body, true)?;
     Ok(())
   }
 
-  fn call_latexmls(&mut self, body: &str) -> Result<LatexmlResponse, Box<dyn Error>> {
+  fn call_latexmls(&mut self, body: &str, allow_retry: bool) -> Result<LatexmlResponse, Box<dyn Error>> {
     self.call_count+=1;
     let addr = format!("127.0.0.1:{}", self.port);
     let mut stream = match self.connection.take() {
@@ -191,7 +191,11 @@ Content-Length: {}
     let mut response_u8 = Vec::new();
     stream.read_to_end(&mut response_u8)?;
     if response_u8.is_empty() {
-      return Err("response was empty.".into());
+      return if allow_retry {
+        self.call_latexmls(body, false)
+      } else {
+        Err("response was empty.".into())
+      }
     }
     let response_str = String::from_utf8_lossy(&response_u8);
     let parts: Vec<_> = response_str.split("\r\n\r\n").collect();

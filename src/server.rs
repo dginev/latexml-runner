@@ -197,13 +197,18 @@ Content-Length: {}
         Err("response was empty.".into())
       }
     }
-    let response_str = String::from_utf8_lossy(&response_u8);
-    let parts: Vec<_> = response_str.split("\r\n\r\n").collect();
-    let payload: LatexmlResponse = serde_json::from_str(&parts.last().unwrap()).unwrap_or_default();
+    let body_index = find_subsequence(&response_u8, "\r\n\r\n".as_bytes()).unwrap_or(0);
+    let body_u8 = &response_u8[body_index..];
+    // We need to assemble our own UTF-16 string, or glyphs such as π get garbled on follow-up IO
+    let payload: LatexmlResponse = serde_json::from_slice(body_u8).unwrap_or_default();
     // reuse the stream
     self.connection = Some(stream);
     Ok(payload)
   }
+}
+
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| window == needle)
 }
 
 impl Drop for Server {

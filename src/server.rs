@@ -60,7 +60,7 @@ impl Server {
       latexmls_exec,
       port,
       // should be a while before we have more than 200 latexmls processes on the same machine
-      backup_port: port+200,
+      backup_port: port + 200,
       cache_key,
       boot_options,
       autoflush,
@@ -70,10 +70,12 @@ impl Server {
     };
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
     {
-      TcpListener::bind(addr).unwrap_or_else(|_| panic!(
-        "Failed to bind on latexmls port {}, harness can't initialize!",
-        port
-      ));
+      TcpListener::bind(addr).unwrap_or_else(|_| {
+        panic!(
+          "Failed to bind on latexmls port {}, harness can't initialize!",
+          port
+        )
+      });
     }
 
     server.ensure_server()?;
@@ -83,17 +85,20 @@ impl Server {
   /// Convert a single job with a dedicated latexmls server, pinned to a port
   pub fn convert(&mut self, job: &str) -> Result<LatexmlResponse, Box<dyn Error>> {
     self.ensure_server()?;
-    match self.call_latexmls(&format!(
-      "cache_key={}&source=literal:{}",
-      self.cache_key,
-      encode(job)
-    ), true) {
+    match self.call_latexmls(
+      &format!(
+        "cache_key={}&source=literal:{}",
+        self.cache_key,
+        encode(job)
+      ),
+      true,
+    ) {
       Ok(r) => Ok(r),
       Err(e) => {
         // close connection on error.
         self.connection = None;
         Err(e)
-      },
+      }
     }
   }
 
@@ -102,14 +107,9 @@ impl Server {
   /// The only resourceful choice is to see if the port is open & available for bind
   /// in which case we should be booting a server at it.
   pub fn ensure_server(&mut self) -> Result<(), Box<dyn Error>> {
-    if self.autoflush>0 && self.call_count > self.autoflush {
+    if self.autoflush > 0 && self.call_count > self.autoflush {
       // if autoflush was breached, rotate ports.
-      let new_backup = self.port;
-      self.port = self.backup_port;
-      self.backup_port = new_backup;
-      self.connection = None;
-      self.child_proc = None;
-      self.call_count = 0;
+      self.rotate_ports()?;
     }
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
     let port_is_open = { TcpListener::bind(addr).is_ok() };
@@ -136,24 +136,44 @@ impl Server {
     Ok(())
   }
 
+  /// Rotates to the backup port, and resets connection and counters
+  pub fn rotate_ports(&mut self) -> Result<(), Box<dyn Error>> {
+    let new_backup = self.port;
+    self.port = self.backup_port;
+    self.backup_port = new_backup;
+    self.connection = None;
+    if let Some(mut proc) = self.child_proc.take() {
+      proc.kill()?;
+    }
+    self.call_count = 0;
+    Ok(())
+  }
+
   fn init_call(&mut self) -> Result<(), Box<dyn Error>> {
     // send an initialization call to the server
     let body = format!("cache_key={}&source=literal:1&", self.cache_key)
       + &self
         .boot_options
         .iter()
-        .map(|opt| if opt.1.is_empty() {
-          encode(&opt.0)
-        } else {
-          format!("{}={}", encode(&opt.0), encode(&opt.1)) })
+        .map(|opt| {
+          if opt.1.is_empty() {
+            encode(&opt.0)
+          } else {
+            format!("{}={}", encode(&opt.0), encode(&opt.1))
+          }
+        })
         .collect::<Vec<_>>()
         .join("&");
     self.call_latexmls(&body, true)?;
     Ok(())
   }
 
-  fn call_latexmls(&mut self, body: &str, allow_retry: bool) -> Result<LatexmlResponse, Box<dyn Error>> {
-    self.call_count+=1;
+  fn call_latexmls(
+    &mut self,
+    body: &str,
+    allow_retry: bool,
+  ) -> Result<LatexmlResponse, Box<dyn Error>> {
+    self.call_count += 1;
     let addr = format!("127.0.0.1:{}", self.port);
     let mut stream = match self.connection.take() {
       Some(stream) => stream,
@@ -168,11 +188,11 @@ impl Server {
               Ok(s) => s,
               Err(e) => {
                 return Err(e.into());
-              },
+              }
             }
-          },
+          }
         }
-      },
+      }
     };
     let request = format!(
       "POST 127.0.0.1:{} HTTP/1.0
@@ -195,7 +215,7 @@ Content-Length: {}
         self.call_latexmls(body, false)
       } else {
         Err("response was empty.".into())
-      }
+      };
     }
     let body_index = find_subsequence(&response_u8, "\r\n\r\n".as_bytes()).unwrap_or(0);
     let body_u8 = &response_u8[body_index..];
@@ -208,7 +228,9 @@ Content-Length: {}
 }
 
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack.windows(needle.len()).position(|window| window == needle)
+  haystack
+    .windows(needle.len())
+    .position(|window| window == needle)
 }
 
 impl Drop for Server {

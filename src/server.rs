@@ -4,7 +4,7 @@ use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
 use std::process::{Child, Command};
 use std::result::Result;
 use std::{thread, time};
-
+use rand::prelude::*;
 use serde::Deserialize;
 use urlencoding::encode;
 #[derive(Debug, Deserialize)]
@@ -144,9 +144,26 @@ impl Server {
     self.connection = None;
     if let Some(mut proc) = self.child_proc.take() {
       proc.kill()?;
+      proc.wait()?;
     }
     self.call_count = 0;
     Ok(())
+  }
+
+  /// Resamples ports, as latexmls is still not stable enough, and may need to be completely abandoned.
+  /// Won't be done by the Harness, but some external applications may find it useful.
+  pub fn resample_ports(&mut self, from:u16, to:u16) -> Result<(), Box<dyn Error>> {
+    let new_port: u16 = thread_rng().gen_range(from, to);
+    let new_backup = new_port+200;
+    self.port = new_port;
+    self.backup_port = new_backup;
+    self.connection = None;
+    if let Some(mut proc) = self.child_proc.take() {
+      proc.kill()?;
+      proc.wait()?;
+    }
+    self.call_count = 0;
+    self.ensure_server()
   }
 
   fn init_call(&mut self) -> Result<(), Box<dyn Error>> {

@@ -1,11 +1,11 @@
+use rand::prelude::*;
+use serde::Deserialize;
 use std::error::Error;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
 use std::process::{Child, Command};
 use std::result::Result;
 use std::{thread, time};
-use rand::prelude::*;
-use serde::Deserialize;
 use urlencoding::encode;
 #[derive(Debug, Deserialize)]
 pub struct LatexmlResponse {
@@ -68,15 +68,6 @@ impl Server {
       connection: None,
       child_proc: None,
     };
-    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port);
-    {
-      TcpListener::bind(addr).unwrap_or_else(|_| {
-        panic!(
-          "Failed to bind on latexmls port {}, harness can't initialize!",
-          port
-        )
-      });
-    }
 
     server.ensure_server()?;
     Ok(server)
@@ -96,7 +87,9 @@ impl Server {
       Ok(r) => Ok(r),
       Err(e) => {
         // close connection on error.
-        self.connection = None;
+        if let Some(stream) = self.connection.take() {
+          stream.shutdown(Shutdown::Both)?;
+        }
         Err(e)
       }
     }
@@ -107,6 +100,13 @@ impl Server {
   /// The only resourceful choice is to see if the port is open & available for bind
   /// in which case we should be booting a server at it.
   pub fn ensure_server(&mut self) -> Result<(), Box<dyn Error>> {
+    if let Some(ref mut child) = self.child_proc {
+      // Check if reaped - e.g. via --expire
+      // in which case we can release the pid
+      if let Ok(Some(_)) = child.try_wait() {
+        self.child_proc = None;
+      }
+    }
     if self.autoflush > 0 && self.call_count > self.autoflush {
       // if autoflush was breached, rotate ports.
       self.rotate_ports()?;
@@ -114,6 +114,14 @@ impl Server {
     let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
     let port_is_open = { TcpListener::bind(addr).is_ok() };
     if port_is_open {
+      // before we start a new latexmls process, make sure we terminate any remaining ones
+      if let Some(mut child) = self.child_proc.take() {
+        if let Some(stream) = self.connection.take() {
+          stream.shutdown(Shutdown::Both)?;
+        }
+        child.kill()?;
+        child.wait()?;
+      }
       {
         let child = Command::new(&self.latexmls_exec)
           .arg("--port")
@@ -141,26 +149,40 @@ impl Server {
     let new_backup = self.port;
     self.port = self.backup_port;
     self.backup_port = new_backup;
-    self.connection = None;
-    if let Some(mut proc) = self.child_proc.take() {
-      proc.kill()?;
-      proc.wait()?;
-    }
     self.call_count = 0;
+    if let Some(mut proc) = self.child_proc.take() {
+      // First check if the current process has been reaped (e.g. due to --expire)
+      if let Ok(Some(_)) = proc.try_wait() {
+        self.child_proc = None;
+      } else {
+        // If process is still around, signal to terminate it
+        if let Some(stream) = self.connection.take() {
+          stream.shutdown(Shutdown::Both)?;
+        }
+        proc.kill()?;
+        proc.wait()?;
+      }
+    }
     Ok(())
   }
 
   /// Resamples ports, as latexmls is still not stable enough, and may need to be completely abandoned.
   /// Won't be done by the Harness, but some external applications may find it useful.
-  pub fn resample_ports(&mut self, from:u16, to:u16) -> Result<(), Box<dyn Error>> {
+  pub fn resample_ports(&mut self, from: u16, to: u16) -> Result<(), Box<dyn Error>> {
     let new_port: u16 = thread_rng().gen_range(from, to);
-    let new_backup = new_port+200;
+    let new_backup = new_port + 200;
     self.port = new_port;
     self.backup_port = new_backup;
-    self.connection = None;
     if let Some(mut proc) = self.child_proc.take() {
-      proc.kill()?;
-      proc.wait()?;
+      if let Ok(Some(_)) = proc.try_wait() {
+        self.child_proc = None;
+      } else {
+        if let Some(stream) = self.connection.take() {
+          stream.shutdown(Shutdown::Both)?;
+        }
+        proc.kill()?;
+        proc.wait()?;
+      }
     }
     self.call_count = 0;
     self.ensure_server()
@@ -255,9 +277,12 @@ impl Drop for Server {
     if let Some(ref mut stream) = self.connection {
       stream.shutdown(Shutdown::Both).unwrap();
     }
-    if let Some(ref mut child) = self.child_proc {
-      child.kill().unwrap();
-      child.wait().unwrap();
+    if let Some(ref mut proc) = self.child_proc {
+      if let Ok(Some(_)) = proc.try_wait() {
+      } else {
+        proc.kill().unwrap();
+        proc.wait().unwrap();
+      }
     }
   }
 }

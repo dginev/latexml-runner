@@ -127,7 +127,7 @@ impl Server {
           .arg("--port")
           .arg(&self.port.to_string())
           .arg("--autoflush")
-          .arg("0")
+          .arg(&self.autoflush.to_string())
           .arg("--timeout")
           .arg("120")
           .arg("--expire")

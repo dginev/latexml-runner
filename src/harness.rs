@@ -2,16 +2,16 @@ use crate::server::{LatexmlResponse, Server};
 
 // use std::process::{Command};
 use std::error::Error;
-use std::io::{BufRead, BufReader};
-use std::fs::{create_dir_all, read_dir};
 use std::fs::File;
+use std::fs::{create_dir_all, read_dir};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::process;
 use std::result::Result;
 use std::sync::Arc;
-use std::process;
 
 use crossbeam::queue::ArrayQueue;
-use csv::{ReaderBuilder, WriterBuilder, Writer};
+use csv::{ReaderBuilder, Writer, WriterBuilder};
 use itertools::Itertools;
 use rayon::prelude::*;
 use which::which;
@@ -51,10 +51,12 @@ impl Harness {
               format!("latexml_runner:{}", process::id()),
               boot_options.clone(),
             )
-            .unwrap_or_else(|_| panic!(
-              "failed to init first latexmls servers from port {}, check your installation.",
-              port
-            )),
+            .unwrap_or_else(|_| {
+              panic!(
+                "failed to init first latexmls servers from port {}, check your installation.",
+                port
+              )
+            }),
           )
           .expect("failed to initialize server ArrayQueue");
       });
@@ -87,17 +89,15 @@ impl Harness {
         .into(),
       );
     };
-    for read_result in read_dir(input_path)? {
-      if let Ok(dir_entry) = read_result {
-        let filename = dir_entry.file_name();
-        let entry = filename.to_string_lossy();
-        if entry.ends_with(".csv") {
-          self.convert_file(
-            &format!("{}/{}", input_dir, entry),
-            &format!("{}/result_{}", output_dir, entry),
-            &format!("{}/{}.log", log_dir, entry),
-          )?;
-        }
+    for dir_entry in read_dir(input_path)?.flatten() {
+      let filename = dir_entry.file_name();
+      let entry = filename.to_string_lossy();
+      if entry.ends_with(".csv") {
+        self.convert_file(
+          &format!("{}/{}", input_dir, entry),
+          &format!("{}/result_{}", output_dir, entry),
+          &format!("{}/{}.log", log_dir, entry),
+        )?;
       }
     }
 
@@ -105,7 +105,12 @@ impl Harness {
   }
 
   /// common setup steps for both txt and csv conversions
-  pub fn setup_conversion_io(&self, input_file: &str, output_file: &str, log_file: &str) -> Result<(Writer<File>, Writer<File>), Box<dyn Error>> {
+  pub fn setup_conversion_io(
+    &self,
+    input_file: &str,
+    output_file: &str,
+    log_file: &str,
+  ) -> Result<(Writer<File>, Writer<File>), Box<dyn Error>> {
     if self.cpus as usize != rayon::current_num_threads() {
       // if we requested different number of CPUs, change that in rayon
       rayon::ThreadPoolBuilder::new()
@@ -151,14 +156,21 @@ impl Harness {
   }
 
   /// Converts a file, dispatching to CSV or TXT readers as requested
-  pub fn convert_file(&mut self, input_file: &str, output_file: &str, log_file: &str) -> Result<(), Box<dyn Error>> {
+  pub fn convert_file(
+    &mut self,
+    input_file: &str,
+    output_file: &str,
+    log_file: &str,
+  ) -> Result<(), Box<dyn Error>> {
     match Path::new(input_file).extension() {
-      Some(ext) => if ext.to_str() == Some("txt") {
-        self.convert_txt_file(input_file, output_file, log_file)
-      } else {
-        self.convert_csv_file(input_file, output_file, log_file)
-      },
-      None => self.convert_csv_file(input_file, output_file, log_file)
+      Some(ext) => {
+        if ext.to_str() == Some("txt") {
+          self.convert_txt_file(input_file, output_file, log_file)
+        } else {
+          self.convert_csv_file(input_file, output_file, log_file)
+        }
+      }
+      None => self.convert_csv_file(input_file, output_file, log_file),
     }
   }
 
@@ -166,21 +178,23 @@ impl Harness {
   /// NO multi-line formulas are supported.
   /// Creates a CSV and log files with respective results and status codes
   /// in the same line order as the input.
-  pub fn convert_txt_file(&mut self,
+  pub fn convert_txt_file(
+    &mut self,
     input_file: &str,
     output_file: &str,
     log_file: &str,
   ) -> Result<(), Box<dyn Error>> {
-    let (mut out_writer, mut log_writer) = self.setup_conversion_io(input_file, output_file, log_file)?;
+    let (mut out_writer, mut log_writer) =
+      self.setup_conversion_io(input_file, output_file, log_file)?;
 
-    let reader = BufReader::with_capacity(
-      self.batch_size,
-      File::open(input_file)?);
+    let reader = BufReader::with_capacity(self.batch_size, File::open(input_file)?);
 
     // Each line of the input file represents a separate conversion job.
     // we stream it in line by line, allocating large enough batches in RAM
     // to process in parallel
-    let batched_record_iter = reader.lines().into_iter()
+    let batched_record_iter = reader
+      .lines()
+      .into_iter()
       .map(|result| result.unwrap_or_else(|_| String::from("IOERROR")))
       .chunks(self.batch_size);
     let mut progress_count = 1;
@@ -219,7 +233,8 @@ impl Harness {
     output_file: &str,
     log_file: &str,
   ) -> Result<(), Box<dyn Error>> {
-    let (mut out_writer, mut log_writer) = self.setup_conversion_io(input_file, output_file, log_file)?;
+    let (mut out_writer, mut log_writer) =
+      self.setup_conversion_io(input_file, output_file, log_file)?;
 
     let mut reader = ReaderBuilder::new()
       .has_headers(false)
@@ -272,7 +287,9 @@ impl Harness {
   /// Note that you may need to batch your data before using this method,
   /// as all output values are held in memory at the moment
   fn convert_iterator<'a, I>(&mut self, vals: I) -> Vec<LatexmlResponse>
-  where I: Iterator<Item = &'a str> + Send {
+  where
+    I: Iterator<Item = &'a str> + Send,
+  {
     let mut results: Vec<_> = vals
       .enumerate()
       .par_bridge()

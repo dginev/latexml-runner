@@ -2,7 +2,7 @@ use rand::prelude::*;
 use serde::Deserialize;
 use std::error::Error;
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener, TcpStream};
+use std::net::{Shutdown, TcpStream};
 use std::process::{Child, Command};
 use std::result::Result;
 use std::{thread, time};
@@ -87,9 +87,7 @@ impl Server {
       Ok(r) => Ok(r),
       Err(e) => {
         // close connection on error.
-        if let Some(stream) = self.connection.take() {
-          stream.shutdown(Shutdown::Both)?;
-        }
+        self.terminate_proc();
         Err(e)
       }
     }
@@ -111,58 +109,37 @@ impl Server {
       // if autoflush was breached, rotate ports.
       self.rotate_ports()?;
     }
-    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), self.port);
-    let port_is_open = { TcpListener::bind(addr).is_ok() };
-    if port_is_open {
-      // before we start a new latexmls process, make sure we terminate any remaining ones
-      if let Some(mut child) = self.child_proc.take() {
-        if let Some(stream) = self.connection.take() {
-          stream.shutdown(Shutdown::Both)?;
-        }
-        child.kill()?;
-        child.wait()?;
-      }
-      {
-        let child = Command::new(&self.latexmls_exec)
-          .arg("--port")
-          .arg(&self.port.to_string())
-          .arg("--autoflush")
-          .arg(&self.autoflush.to_string())
-          .arg("--timeout")
-          .arg("120")
-          .arg("--expire")
-          .arg("4")
-          .spawn()?;
-        self.child_proc = Some(child);
+    if self.child_proc.is_none() {
+      let child = Command::new(&self.latexmls_exec)
+        .arg("--port")
+        .arg(&self.port.to_string())
+        .arg("--autoflush")
+        .arg(&self.autoflush.to_string())
+        .arg("--timeout")
+        .arg("120")
+        .arg("--expire")
+        .arg("4")
+        .spawn()?;
+      self.child_proc = Some(child);
 
-        let a_second = time::Duration::from_millis(1000);
-        thread::sleep(a_second);
-
-        self.init_call()?;
-      }
+      let half_a_second = time::Duration::from_millis(500);
+      thread::sleep(half_a_second);
+      self.init_call()?;
     }
     Ok(())
   }
 
   /// Rotates to the backup port, and resets connection and counters
   pub fn rotate_ports(&mut self) -> Result<(), Box<dyn Error>> {
+    eprintln!(
+      "-- rotating port {} to port {}",
+      self.port, self.backup_port
+    );
     let new_backup = self.port;
     self.port = self.backup_port;
     self.backup_port = new_backup;
     self.call_count = 0;
-    if let Some(mut proc) = self.child_proc.take() {
-      // First check if the current process has been reaped (e.g. due to --expire)
-      if let Ok(Some(_)) = proc.try_wait() {
-        self.child_proc = None;
-      } else {
-        // If process is still around, signal to terminate it
-        if let Some(stream) = self.connection.take() {
-          stream.shutdown(Shutdown::Both)?;
-        }
-        proc.kill()?;
-        proc.wait()?;
-      }
-    }
+    self.terminate_proc();
     Ok(())
   }
 
@@ -171,19 +148,10 @@ impl Server {
   pub fn resample_ports(&mut self, from: u16, to: u16) -> Result<(), Box<dyn Error>> {
     let new_port: u16 = thread_rng().gen_range(from, to);
     let new_backup = new_port + 200;
+    eprintln!("-- port resampling from {} to {}.", self.port, new_port);
     self.port = new_port;
     self.backup_port = new_backup;
-    if let Some(mut proc) = self.child_proc.take() {
-      if let Ok(Some(_)) = proc.try_wait() {
-        self.child_proc = None;
-      } else {
-        if let Some(stream) = self.connection.take() {
-          stream.shutdown(Shutdown::Both)?;
-        }
-        proc.kill()?;
-        proc.wait()?;
-      }
-    }
+    self.terminate_proc();
     self.call_count = 0;
     self.ensure_server()
   }
@@ -220,7 +188,7 @@ impl Server {
         // replenish the stream if needed
         match TcpStream::connect(&addr) {
           Ok(s) => s,
-          Err(_) => {
+          Err(_e) => {
             // retry, since this can be fragile
             thread::sleep(time::Duration::from_millis(50));
             match TcpStream::connect(&addr) {
@@ -233,6 +201,7 @@ impl Server {
         }
       }
     };
+    stream.set_nodelay(true)?;
     let request = format!(
       "POST 127.0.0.1:{} HTTP/1.0
 Host: {}
@@ -248,21 +217,40 @@ Content-Length: {}
     );
     stream.write_all(request.as_bytes())?;
     let mut response_u8 = Vec::new();
+    // Array with a fixed size
     stream.read_to_end(&mut response_u8)?;
-    if response_u8.is_empty() {
+    let body_index = find_subsequence(&response_u8, "\r\n\r\n".as_bytes()).unwrap_or(0);
+    if response_u8.is_empty() || body_index == 0 {
       return if allow_retry {
         self.call_latexmls(body, false)
       } else {
         Err("response was empty.".into())
       };
     }
-    let body_index = find_subsequence(&response_u8, "\r\n\r\n".as_bytes()).unwrap_or(0);
-    let body_u8 = &response_u8[body_index..];
+    let body_u8 = &response_u8[body_index + 4..];
     // We need to assemble our own UTF-16 string, or glyphs such as π get garbled on follow-up IO
-    let payload: LatexmlResponse = serde_json::from_slice(body_u8).unwrap_or_default();
+    let payload: LatexmlResponse = match serde_json::from_slice(body_u8) {
+      Ok(json) => json,
+      Err(e) => {
+        println!("-- malformed {:?}: {:?}", e, std::str::from_utf8(&body_u8));
+        LatexmlResponse::default()
+      }
+    };
     // reuse the stream
     self.connection = Some(stream);
     Ok(payload)
+  }
+  fn terminate_proc(&mut self) {
+    if let Some(ref mut stream) = self.connection {
+      stream.shutdown(Shutdown::Both).unwrap();
+    }
+    if let Some(ref mut proc) = self.child_proc {
+      if let Ok(Some(_)) = proc.try_wait() {
+      } else {
+        proc.kill().unwrap();
+        proc.wait().unwrap();
+      }
+    }
   }
 }
 
@@ -274,15 +262,6 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 impl Drop for Server {
   fn drop(&mut self) {
-    if let Some(ref mut stream) = self.connection {
-      stream.shutdown(Shutdown::Both).unwrap();
-    }
-    if let Some(ref mut proc) = self.child_proc {
-      if let Ok(Some(_)) = proc.try_wait() {
-      } else {
-        proc.kill().unwrap();
-        proc.wait().unwrap();
-      }
-    }
+    self.terminate_proc()
   }
 }

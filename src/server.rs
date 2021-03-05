@@ -236,8 +236,18 @@ Content-Length: {}
         LatexmlResponse::default()
       }
     };
-    // reuse the stream
-    self.connection = Some(stream);
+    // println!(
+    //   "-- latexmls:{} returned status {} with body_size {}",
+    //   self.port,
+    //   payload.status_code,
+    //   body_u8.len()
+    // );
+    // reuse the stream if we were OK
+    if payload.status_code != 3 {
+      self.connection = Some(stream);
+    } else {
+      self.connection = None;
+    }
     Ok(payload)
   }
   fn terminate_proc(&mut self) {

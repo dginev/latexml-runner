@@ -124,7 +124,13 @@ impl Server {
 
       let half_a_second = time::Duration::from_millis(500);
       thread::sleep(half_a_second);
-      self.init_call()?;
+      // Try init twice, second time a waiting little longer -
+      //  to make e.g. slow CI machines succeed smoothly.
+      if self.init_call().is_err() {
+        let a_second = time::Duration::from_millis(1000);
+        thread::sleep(a_second);
+        self.init_call()?;
+      }
     }
     Ok(())
   }

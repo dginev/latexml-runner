@@ -51,10 +51,10 @@ impl Harness {
               format!("latexml_runner:{}", process::id()),
               boot_options.clone(),
             )
-            .unwrap_or_else(|_| {
+            .unwrap_or_else(|e| {
               panic!(
-                "failed to init first latexmls servers from port {}, check your installation.",
-                port
+                "failed to init first latexmls servers from port {}, check your installation: {:?}",
+                port, e
               )
             }),
           )

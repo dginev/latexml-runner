@@ -12,7 +12,7 @@ jobs:
         with:
           packages: "cpanminus libarchive-zip-perl libdb-dev libfile-which-perl libimage-magick-perl libimage-size-perl libio-string-perl libjson-xs-perl libparse-recdescent-perl libtext-unidecode-perl liburi-perl libuuid-tiny-perl libwww-perl libxml-libxml-perl libxml-libxslt-perl libxml2 libxml2-dev libxslt1-dev libxslt1.1"
       - name: Install latexmls
-        run: "cpanm --notest --sudo https://github.com/dginev/LaTeXML-Plugin-latexmls/tarball/master"
+        run: "cpanm --verbose --sudo https://github.com/dginev/LaTeXML-Plugin-latexmls/tarball/master"
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
         with:

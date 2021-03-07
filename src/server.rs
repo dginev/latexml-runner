@@ -209,7 +209,7 @@ impl Server {
     };
     stream.set_nodelay(true)?;
     let request = format!(
-      "POST 127.0.0.1:{} HTTP/1.0
+      "POST {} HTTP/1.0
 Host: {}
 User-Agent: latexmlc
 Content-Type: application/x-www-form-urlencoded

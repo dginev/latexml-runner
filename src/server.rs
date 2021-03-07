@@ -113,6 +113,8 @@ impl Server {
       let child = Command::new(&self.latexmls_exec)
         .arg("--port")
         .arg(&self.port.to_string())
+        .arg("--address")
+        .arg("127.0.0.1")
         .arg("--autoflush")
         .arg(&self.autoflush.to_string())
         .arg("--timeout")

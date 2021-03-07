@@ -126,10 +126,14 @@ impl Server {
       thread::sleep(half_a_second);
       // Try init twice, second time a waiting little longer -
       //  to make e.g. slow CI machines succeed smoothly.
-      if self.init_call().is_err() {
+      if let Err(e) = self.init_call() {
+        println!("init call for port {:?} needs to retry: {:?}", self.port, e);
         let a_second = time::Duration::from_millis(1000);
         thread::sleep(a_second);
-        self.init_call()?;
+        if let Err(e2) = self.init_call() {
+          println!("init retry on port {:?} failed: {:?}", self.port, e2);
+          return Err(e2);
+        }
       }
     }
     Ok(())

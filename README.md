@@ -14,16 +14,24 @@ If your conversion task requires a distributed setup and/or is unable to preload
 
 ### Demo
 
-You can try it out by using the publick docker image via:
-```bash
-$ echo "\sqrt{x}+\frac{1}{2}=0" > formula_latex.txt
+You can try it out by using the publick docker image and avoid any installation headaches.
 
-$ docker run --cpus="1.0" --memory="2g" \
- -v "$(pwd)":/workdir -w /workdir \
- latexml/latexml-runner:latest \
- -i formula_latex.txt -o formula_xml.csv -l formula_status.log \
- --preload=article.cls --preload=texvc.sty \
- --format=html5 --nodefaultresources\
- --whatsin=math --whatsout=math \
- --pmml --cmml --mathtex --timeout=30
+In the following example, we use an invocation useful for converting math in sites such as
+StackExchange and Wikipedia:
+
+```bash
+$ for i in {1..200}; do echo "\sqrt{x}+\frac{1}{2}=0" >> formula_latex.txt; done
+ 
+$ time docker run --cpus="2.0" --memory="8g" \
+-v "$(pwd)":/workdir -w /workdir \
+latexml/latexml-runner:latest \
+-i formula_latex.txt -o formula_xml.csv -l formula_status.log \
+--preload=LaTeX.pool --preload=bm.sty --preload=texvc.sty \
+--preload="literal:\\let\\theequation\\relax" \
+--whatsin=math --whatsout=math --pmml --cmml --mathtex --format=html5 \
+--nodefaultresources --timeout=30 
 ```
+
+Should complete in e.g. 9.5 seconds on a `Intel(R) Xeon(R) Gold 6148 CPU @ 2.40GHz`. 
+
+Importantly, the `formula_status.log` file should contain two hundred zeros, one on each line, to signal that the conversions are robustly finishing error-free. In other words, that the harness and `latexmls` are communicating correctly.

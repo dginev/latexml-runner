@@ -1,6 +1,6 @@
 [package]
 name = "latexml-runner"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Deyan Ginev <deyan.ginev@gmail.com>"]
 edition = "2018"
 description = "Rust runner for high-performance TeX to HTML conversions with latexml"

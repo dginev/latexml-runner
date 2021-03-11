@@ -15,7 +15,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         (author: "Deyan Ginev. <deyan.ginev@gmail.com>")
         (about: "A high-performance client for the latexmls daemonized socket server for LaTeXML")
         (@arg PORT: -p --from_port +takes_value "Sets the first port at which to deploy latexmls. Default is 3334.")
-        (@arg CPUS: -c --max_cpus +takes_value "Sets the maximal number of CPUs to use. Default is all available.")
         (@arg INPUT: -i --input_file +takes_value +required "An input CSV file containing one formula per line. OR a directory of such CSV files.")
         (@arg OUTPUT: -o --output_file +takes_value +required "The output CSV file, containing one output formula per line, preserving input order. OR a directory for such CSV files.")
         (@arg LOG: -l --log_file +takes_value "An optional log file, containing one latexml conversion status per line, preserving input order")
@@ -113,18 +112,16 @@ fn main() -> Result<(), Box<dyn Error>> {
   } else {
     3334
   };
-  let cpus: u16 = if let Some(cpu_str) = matches.value_of("CPUS") {
-    cpu_str.parse().unwrap()
-  } else {
-    rayon::current_num_threads() as u16
-  };
+
   let input_file = matches.value_of("INPUT").unwrap().to_string();
   let output_file = matches.value_of("OUTPUT").unwrap().to_string();
   let log_file = matches.value_of("LOG").unwrap_or("runner.log").to_string();
-  let autoflush = matches.value_of("autoflush").unwrap_or("0")
-    .parse::<usize>().unwrap_or(0);
+  let autoflush = matches
+    .value_of("autoflush")
+    .unwrap_or("0")
+    .parse::<usize>()
+    .unwrap_or(0);
   matches.args.remove("PORT");
-  matches.args.remove("CPUS");
   matches.args.remove("INPUT");
   matches.args.remove("OUTPUT");
   matches.args.remove("LOG");
@@ -141,20 +138,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     if name_only {
       match *key {
-        "pmml" | "cmml" | "openmath" | "mathtex" |
-        "nopmml" | "nocmml" | "noopenmath" | "nomathtex" =>
-        {deferred_math.insert(*key);},
-        _ =>  boot_latexmls_opts.push((key.to_string(), String::new()))
+        "pmml" | "cmml" | "openmath" | "mathtex" | "nopmml" | "nocmml" | "noopenmath"
+        | "nomathtex" => {
+          deferred_math.insert(*key);
+        }
+        _ => boot_latexmls_opts.push((key.to_string(), String::new())),
       }
     }
   }
-  for math_key in &["pmml","cmml","openmath","mathtex",
-      "nopmml","nocmml","noopenmath","nomathtex"] {
+  for math_key in &[
+    "pmml",
+    "cmml",
+    "openmath",
+    "mathtex",
+    "nopmml",
+    "nocmml",
+    "noopenmath",
+    "nomathtex",
+  ] {
     if deferred_math.contains(math_key) {
       boot_latexmls_opts.push((math_key.to_string(), String::new()))
     }
   }
 
-  let mut harness = Harness::new(from_port, cpus, autoflush, boot_latexmls_opts)?;
+  let mut harness = Harness::new(from_port, autoflush, boot_latexmls_opts)?;
   harness.convert_file(&input_file, &output_file, &log_file)
 }

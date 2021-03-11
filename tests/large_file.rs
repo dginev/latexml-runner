@@ -7,7 +7,6 @@ fn runner_helper(input_file: &str, output_file: &str, log_file: &str) {
   let from_port: u16 = thread_rng().gen_range(11000, 16000);
   let harness_result = Harness::new(
     from_port,
-    rayon::current_num_threads() as u16,
     0,
     [
       ("whatsin", "math"),

@@ -8,7 +8,6 @@ fn convert_file() {
   let from_port: u16 = thread_rng().gen_range(11000, 13000);
   let harness_result = Harness::new(
     from_port,
-    rayon::current_num_threads() as u16,
     0,
     [
       ("whatsin", "math"),

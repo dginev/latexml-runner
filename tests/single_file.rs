@@ -7,7 +7,6 @@ fn runner_helper(input_file: &str, output_file: &str, log_file: &str) {
   let from_port: u16 = thread_rng().gen_range(11000, 16000);
   let harness_result = Harness::new(
     from_port,
-    rayon::current_num_threads() as u16,
     0,
     [
       ("whatsin", "math"),
@@ -35,10 +34,16 @@ fn runner_helper(input_file: &str, output_file: &str, log_file: &str) {
 }
 
 #[test]
-fn convert_sqrt_40() { runner_helper("sqrts_40x.csv", "sqrts_40x_result.csv", "sqrts_40x.log"); }
+fn convert_sqrt_40() {
+  runner_helper("sqrts_40x.csv", "sqrts_40x_result.csv", "sqrts_40x.log");
+}
 
 #[test]
-fn convert_single_exp() { runner_helper("single.csv", "single_result.csv", "single.log"); }
+fn convert_single_exp() {
+  runner_helper("single.csv", "single_result.csv", "single.log");
+}
 
 #[test]
-fn convert_mixed_severity() { runner_helper("mixed.csv", "mixed_result.csv", "mixed.log"); }
+fn convert_mixed_severity() {
+  runner_helper("mixed.csv", "mixed_result.csv", "mixed.log");
+}

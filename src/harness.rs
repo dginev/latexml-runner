@@ -18,7 +18,6 @@ use which::which;
 
 #[derive(Debug)]
 pub struct Harness {
-  pub cpus: u16,
   pub from_port: u16,
   pub batch_size: usize,
   servers: Arc<ArrayQueue<Server>>,
@@ -31,14 +30,14 @@ impl Harness {
   /// Upon Harness `Drop`, the latexmls server processes are reaped from the OS
   pub fn new(
     from_port: u16,
-    cpus: u16,
     autoflush: usize,
     boot_options: Vec<(String, String)>,
   ) -> Result<Self, Box<dyn Error>> {
     let latexmls_which = which("latexmls").expect("latexmls needs to be installed and visible");
     let latexmls_exec = latexmls_which.as_path().to_string_lossy().to_string();
-    let servers = Arc::new(ArrayQueue::new(cpus.into()));
-    (from_port..from_port + cpus)
+    let thread_count = rayon::current_num_threads();
+    let servers = Arc::new(ArrayQueue::new(thread_count));
+    (from_port..from_port + thread_count as u16)
       .into_par_iter()
       .for_each(|port| {
         servers
@@ -62,10 +61,9 @@ impl Harness {
       });
     Ok(Harness {
       from_port,
-      cpus,
       // Let's both fit in RAM and also maximally utilize the CPUs
       // without artificial round-robin bottlenecks (batch_size=cpus)
-      batch_size: (100 * cpus).into(),
+      batch_size: (100 * thread_count),
       servers,
     })
   }
@@ -111,12 +109,6 @@ impl Harness {
     output_file: &str,
     log_file: &str,
   ) -> Result<(Writer<File>, Writer<File>), Box<dyn Error>> {
-    if self.cpus as usize != rayon::current_num_threads() {
-      // if we requested different number of CPUs, change that in rayon
-      rayon::ThreadPoolBuilder::new()
-        .num_threads(self.cpus.into())
-        .build_global()?;
-    }
     let input_path = Path::new(input_file);
     let input_dir = if input_path.is_dir() || !input_path.exists() {
       return Err(

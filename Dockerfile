@@ -65,7 +65,7 @@ RUN echo 'eval "$(perl -I$HOME/perl5/lib/perl5 -Mlocal::lib)"' >>~/.bashrc
 RUN export HARNESS_OPTIONS=j$(grep -c ^processor /proc/cpuinfo):c
 RUN mkdir -p /opt/latexml
 WORKDIR /opt/latexml
-ENV LATEXML_COMMIT=6684fa5054a62646294a363387d46635e99b00e3
+ENV LATEXML_COMMIT=6a07099812a957b77b603acc922cd12e5da9b786
 RUN cpanm --verbose --notest --skip-installed https://github.com/brucemiller/LaTeXML/tarball/$LATEXML_COMMIT
 
 # Enable imagemagick policy permissions for work with arXiv PDF/EPS files

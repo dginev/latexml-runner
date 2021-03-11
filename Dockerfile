@@ -75,6 +75,6 @@ RUN perl -pi.bak -e 's/rights="none" pattern="([XE]?PS\d?|PDF)"/rights="read|wri
 RUN cpanm --notest --verbose https://github.com/dginev/LaTeXML-Plugin-latexmls/tarball/master
 
 # Install latexml-runner
-RUN cargo install latexml-runner
+RUN cargo install latexml-runner --version 0.1.6
 
 ENTRYPOINT ["latexml_runner"]

@@ -13,12 +13,12 @@
 ## 1. threadripper 1950x, StackExchange math-to-math
 ##
 ## docker run --cpus="30.0" --memory="16g" \
-## -v "$(pwd)":/workdir -w /workdir \
-## latexml-runner:1.0 -i formula_latex.txt -o formula_xml.csv \
-## -l formula_status.log --timeout=65 --autoflush=10000 \
-## --whatsin=math --whatsout=math --format=html5 --nodefaultresources\
-## --pmml --cmml --mathtex --preload=cancel.sty \
-## --preload=amsmath.sty --preload=amssymb.sty
+##  -v "$(pwd)":/workdir -w /workdir \
+##  latexml/latexml-runner:latest \
+##  -i formula_latex.txt -o formula_xml.csv -l formula_status.log \
+##  --timeout=30 --preload=article.cls --preload=texvc.sty \
+##  --whatsin=math --whatsout=math --format=html5 --nodefaultresources\
+##  --pmml --cmml --mathtex
 
 FROM rust:latest
 

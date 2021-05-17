@@ -19,14 +19,14 @@ fn convert_file() {
     .map(|(x, y)| (x.to_string(), y.to_string()))
     .collect(),
   );
-  assert!(harness_result.is_ok(), format!("{:?}", harness_result));
+  assert!(harness_result.is_ok(), "{:?}", harness_result);
   let mut harness = harness_result.unwrap();
   let result = harness.convert_dir(
     "tests/data/sample_dir",
     "tests/scratch/sample_dir",
     "tests/scratch/sample_dir",
   );
-  assert!(result.is_ok(), format!("{:?}", result));
+  assert!(result.is_ok(), "{:?}", result);
   eprintln!(
     "tests/data directory test took {:?}ms",
     start_test.elapsed().as_millis()

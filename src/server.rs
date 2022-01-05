@@ -147,9 +147,7 @@ impl Server {
       "-- rotating port {} to port {}",
       self.port, self.backup_port
     );
-    let new_backup = self.port;
-    self.port = self.backup_port;
-    self.backup_port = new_backup;
+    std::mem::swap(&mut self.port, &mut self.backup_port);
     self.call_count = 0;
     self.terminate_proc();
     Ok(())
@@ -244,7 +242,7 @@ Content-Length: {}
     let payload: LatexmlResponse = match serde_json::from_slice(body_u8) {
       Ok(json) => json,
       Err(e) => {
-        println!("-- malformed {:?}: {:?}", e, std::str::from_utf8(&body_u8));
+        println!("-- malformed {:?}: {:?}", e, std::str::from_utf8(body_u8));
         LatexmlResponse::default()
       }
     };
